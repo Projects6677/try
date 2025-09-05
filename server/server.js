@@ -30,9 +30,19 @@ const requestSchema = new mongoose.Schema({
     volunteers: [String]
 });
 
-const Request = mongoose.model('Request', requestSchema);
+const volunteerSchema = new mongoose.Schema({
+    volunteerName: String,
+    volunteerPhone: String,
+    requestId: { type: mongoose.Schema.Types.ObjectId, ref: 'Request' },
+    requestLocation: String,
+    status: { type: String, default: 'helping' },
+    timestamp: { type: Date, default: Date.now }
+});
 
-// API Endpoints
+const Request = mongoose.model('Request', requestSchema);
+const Volunteer = mongoose.model('Volunteer', volunteerSchema);
+
+// API Endpoints for Requests
 app.get('/api/requests', async (req, res) => {
     try {
         const requests = await Request.find().sort({ timestamp: -1 });
@@ -60,7 +70,6 @@ app.post('/api/requests', async (req, res) => {
     }
 });
 
-// Endpoint for updating a request
 app.patch('/api/requests/:id', async (req, res) => {
     try {
         const request = await Request.findById(req.params.id);
@@ -71,11 +80,70 @@ app.patch('/api/requests/:id', async (req, res) => {
             request.status = req.body.status;
         }
         if (req.body.volunteers != null) {
-            // This is a simple fix to push a new volunteer, but a more robust solution would check for duplicates.
             request.volunteers.push(req.body.volunteers);
         }
         const updatedRequest = await request.save();
         res.json(updatedRequest);
+    } catch (err) {
+        res.status(400).json({ message: err.message });
+    }
+});
+
+// New API Endpoints for Volunteers
+app.get('/api/volunteers', async (req, res) => {
+    try {
+        const volunteers = await Volunteer.find().sort({ timestamp: -1 });
+        res.json(volunteers);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.post('/api/volunteers', async (req, res) => {
+    const newVolunteer = new Volunteer({
+        volunteerName: req.body.volunteerName,
+        volunteerPhone: req.body.volunteerPhone,
+        requestId: req.body.requestId,
+        requestLocation: req.body.requestLocation,
+        status: 'helping'
+    });
+
+    try {
+        const savedVolunteer = await newVolunteer.save();
+
+        // Update the main request to show a volunteer has committed
+        const request = await Request.findById(req.body.requestId);
+        if (request) {
+            request.status = 'helping';
+            await request.save();
+        }
+
+        res.status(201).json(savedVolunteer);
+    } catch (err) {
+        res.status(400).json({ message: err.message });
+    }
+});
+
+app.patch('/api/volunteers/:id', async (req, res) => {
+    try {
+        const volunteer = await Volunteer.findById(req.params.id);
+        if (volunteer == null) {
+            return res.status(404).json({ message: 'Volunteer activity not found' });
+        }
+        if (req.body.status != null) {
+            volunteer.status = req.body.status;
+        }
+        const updatedVolunteer = await volunteer.save();
+
+        // If a volunteer marks a request as completed, update the main request status too
+        if (req.body.status === 'completed') {
+            const request = await Request.findById(volunteer.requestId);
+            if (request) {
+                request.status = 'completed';
+                await request.save();
+            }
+        }
+        res.json(updatedVolunteer);
     } catch (err) {
         res.status(400).json({ message: err.message });
     }
