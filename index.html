@@ -427,6 +427,7 @@
             <br>
             <form id="volunteerForm">
                 <input type="hidden" id="modalRequestId">
+                <input type="hidden" id="modalRequestLocation">
                 <div class="form-group">
                     <label for="volunteerName">Your Name:</label>
                     <input type="text" id="volunteerName" required>
@@ -444,7 +445,8 @@
 
     <script>
         // Use your Render API URL here
-        const API_URL = 'https://try-ji7x.onrender.com/api/requests';
+        const API_URL = 'https://<your-render-service-name>.onrender.com/api/requests';
+        const VOLUNTEER_API_URL = 'https://<your-render-service-name>.onrender.com/api/volunteers';
 
         // Initialize the app on page load
         document.addEventListener('DOMContentLoaded', function () {
@@ -501,6 +503,7 @@
                 const volunteerName = document.getElementById('volunteerName').value;
                 const volunteerPhone = document.getElementById('volunteerPhone').value;
                 const requestId = document.getElementById('modalRequestId').value;
+                const requestLocation = document.getElementById('modalRequestLocation').value;
 
                 const phoneValidation = validateVolunteerPhone(volunteerPhone);
                 if (!phoneValidation.valid) {
@@ -508,13 +511,15 @@
                     return;
                 }
 
-                // Update request with new volunteer information
-                fetch(`${API_URL}/${requestId}`, {
-                    method: 'PATCH',
+                // Create a new volunteer entry
+                fetch(VOLUNTEER_API_URL, {
+                    method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        status: 'helping',
-                        volunteers: `${volunteerName.trim()} (${phoneValidation.phone})`
+                        volunteerName: volunteerName.trim(),
+                        volunteerPhone: phoneValidation.phone,
+                        requestId: requestId,
+                        requestLocation: requestLocation
                     })
                 })
                 .then(response => response.json())
@@ -588,14 +593,13 @@
             }
             const imageFile = document.getElementById('personImage').files[0];
             
-            // Note: Image upload requires more complex backend handling. This version sends a placeholder.
             const newRequest = {
                 reporterName: document.getElementById('reporterName').value,
                 reporterPhone: document.getElementById('reporterPhone').value,
                 location: document.getElementById('location').value,
                 description: document.getElementById('description').value,
                 urgency: document.getElementById('urgency').value,
-                image: imageFile ? "Image Not Supported Yet" : null // Placeholder
+                image: imageFile ? "Image Not Supported Yet" : null
             };
 
             fetch(API_URL, {
@@ -640,8 +644,8 @@
                                 <p><strong>Contact:</strong> ${request.reporterPhone}</p>
                                 <p><strong>Time:</strong> ${new Date(request.timestamp).toLocaleString()}</p>
                                 ${request.volunteers.length > 0 ? `<p><strong>Volunteers:</strong> ${request.volunteers.join(', ')}</p>` : ''}
-                                ${request.status === 'pending' ? `<button class="help-btn" onclick="volunteerToHelp('${request._id}')">I'll Help! 🤝</button>` : ''}
-                                ${request.status === 'helping' ? `<button class="help-btn" onclick="markCompleted('${request._id}')">Mark as Completed ✅</button>` : ''}
+                                ${request.status === 'pending' ? `<button class="help-btn" onclick="volunteerToHelp('${request._id}', '${request.location}')">I'll Help! 🤝</button>` : ''}
+                                ${request.status === 'helping' ? `<button class="help-btn" disabled>Being Helped</button>` : ''}
                             </div>
                         `).join('');
                     }
@@ -652,14 +656,15 @@
                 });
         }
 
-        function volunteerToHelp(requestId) {
+        function volunteerToHelp(requestId, requestLocation) {
             const modal = document.getElementById('volunteerModal');
             document.getElementById('modalRequestId').value = requestId;
+            document.getElementById('modalRequestLocation').value = requestLocation;
             modal.style.display = 'flex';
         }
 
-        function markCompleted(requestId) {
-            fetch(`${API_URL}/${requestId}`, {
+        function markCompleted(volunteerId) {
+            fetch(`${VOLUNTEER_API_URL}/${volunteerId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'completed' })
@@ -669,6 +674,7 @@
                 showNotification('Thank you for making a difference! ❤️');
                 displayRequests();
                 updateStats();
+                displayVolunteerActivity();
             })
             .catch(error => {
                 console.error('Error updating status:', error);
@@ -680,20 +686,20 @@
             const volunteerList = document.getElementById('volunteerList');
             volunteerList.innerHTML = '<p style="text-align: center; color: #666;">Loading your activity...</p>';
 
-            fetch(API_URL)
+            fetch(VOLUNTEER_API_URL)
                 .then(response => response.json())
                 .then(data => {
-                    // Note: This is a simplified view and assumes volunteering is only done from this browser.
-                    const myVolunteering = data.filter(req => req.volunteers.length > 0 && req.status !== 'pending');
+                    const myVolunteering = data.filter(vol => vol.status !== 'completed'); // Filter for pending/helping
                     if (myVolunteering.length === 0) {
                         volunteerList.innerHTML = '<p style="text-align: center; color: #666;">No volunteering activity yet.</p>';
                     } else {
-                        volunteerList.innerHTML = myVolunteering.map(req => `
+                        volunteerList.innerHTML = myVolunteering.map(vol => `
                             <div class="request-card">
-                                <h3>Location: ${req.location}</h3>
-                                <p><strong>Description:</strong> ${req.description}</p>
-                                <p><strong>Status:</strong> <span class="status-badge status-${req.status}">${req.status}</span></p>
-                                <p><strong>Volunteers:</strong> ${req.volunteers.join(', ')}</p>
+                                <h3>Location: ${vol.requestLocation}</h3>
+                                <p><strong>Status:</strong> <span class="status-badge status-${vol.status}">${vol.status}</span></p>
+                                <p><strong>Started:</strong> ${new Date(vol.timestamp).toLocaleString()}</p>
+                                ${vol.status === 'helping' ? `<button class="help-btn" onclick="markCompleted('${vol._id}')">Mark as Completed ✅</button>` : ''}
+                                ${vol.status === 'completed' ? `<p style="color: #10b981; font-weight: bold;">✅ Help Successfully Completed!</p>` : ''}
                             </div>
                         `).join('');
                     }
@@ -712,10 +718,14 @@
         function updateStats() {
             fetch(API_URL)
                 .then(response => response.json())
-                .then(data => {
-                    document.getElementById('totalRequests').textContent = data.length;
-                    document.getElementById('helpedCount').textContent = data.filter(req => req.status === 'completed').length;
-                    document.getElementById('activeVolunteers').textContent = data.filter(req => req.status === 'helping').length;
+                .then(requestsData => {
+                    document.getElementById('totalRequests').textContent = requestsData.length;
+                    document.getElementById('helpedCount').textContent = requestsData.filter(req => req.status === 'completed').length;
+                    fetch(VOLUNTEER_API_URL)
+                        .then(response => response.json())
+                        .then(volunteersData => {
+                            document.getElementById('activeVolunteers').textContent = volunteersData.filter(vol => vol.status === 'helping').length;
+                        })
                 })
                 .catch(error => {
                     console.error('Error updating stats:', error);
