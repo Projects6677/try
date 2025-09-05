@@ -446,8 +446,9 @@
 
     <script>
         // Use your Render API URL here
-        const API_URL = 'https://<your-render-service-name>.onrender.com/api/requests';
-        const VOLUNTEER_API_URL = 'https://<your-render-service-name>.onrender.com/api/volunteers';
+        const API_URL = 'https://try-ji7x.onrender.com/api/requests';
+        const VOLUNTEER_API_URL = 'https://try-ji7x.onrender.com/api/volunteers';
+        const GEOCODE_API_URL = 'https://try-ji7x.onrender.com/api/geocode';
 
         let liveLocation = {};
 
@@ -471,17 +472,24 @@
                     liveLocation.latitude = position.coords.latitude;
                     liveLocation.longitude = position.coords.longitude;
                     
-                    // Call the reverse geocoding API
-                    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${liveLocation.latitude}&lon=${liveLocation.longitude}`);
+                    // Call the new backend endpoint for reverse geocoding
+                    const response = await fetch(GEOCODE_API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            lat: liveLocation.latitude,
+                            lon: liveLocation.longitude
+                        })
+                    });
                     const data = await response.json();
 
-                    if (data.display_name) {
-                        const formattedAddress = data.display_name;
+                    if (data.results && data.results.length > 0) {
+                        const formattedAddress = data.results[0].formatted_address;
                         document.getElementById('location').value = formattedAddress;
-                        showNotification('📍 Live location captured and address found!');
+                        showNotification('📍 Live location captured and precise address found!');
                     } else {
                         document.getElementById('location').value = `Lat: ${liveLocation.latitude}, Lng: ${liveLocation.longitude}`;
-                        showNotification('📍 Live location captured. Address not found, using coordinates.');
+                        showNotification('📍 Live location captured. Precise address not found, using coordinates.');
                     }
                 } catch (error) {
                     showNotification('❌ Failed to get live location. Please enter location manually.');
