@@ -22,6 +22,8 @@ const requestSchema = new mongoose.Schema({
     reporterName: String,
     reporterPhone: String,
     location: String,
+    latitude: Number,
+    longitude: Number,
     description: String,
     urgency: String,
     status: { type: String, default: 'pending' },
@@ -57,6 +59,8 @@ app.post('/api/requests', async (req, res) => {
         reporterName: req.body.reporterName,
         reporterPhone: req.body.reporterPhone,
         location: req.body.location,
+        latitude: req.body.latitude,
+        longitude: req.body.longitude,
         description: req.body.description,
         urgency: req.body.urgency,
         image: req.body.image
