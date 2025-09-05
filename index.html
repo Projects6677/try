@@ -443,22 +443,10 @@
 
 
     <script>
-        // ======= NEW CODE: AUTOMATICALLY RESETS DATA ONCE =======
-        // This checks for a flag. If the flag doesn't exist, it clears all old data
-        // and then sets the flag so it never clears the data again.
-        if (!localStorage.getItem('feedHopeInitialized_v2')) {
-            localStorage.clear();
-            localStorage.setItem('feedHopeInitialized_v2', 'true');
-        }
-        // ========================================================
+        // Use your Render API URL here
+        const API_URL = 'https://<your-render-service-name>.onrender.com/api/requests';
 
-
-        // In-memory data storage (loading from a now-clean localStorage)
-        let requests = JSON.parse(localStorage.getItem('foodRequests') || '[]');
-        let volunteers = JSON.parse(localStorage.getItem('volunteers') || '[]');
-        let requestIdCounter = parseInt(localStorage.getItem('requestIdCounter') || '1');
-
-        // Initialize the app
+        // Initialize the app on page load
         document.addEventListener('DOMContentLoaded', function () {
             updateStats();
             displayRequests();
@@ -512,7 +500,7 @@
 
                 const volunteerName = document.getElementById('volunteerName').value;
                 const volunteerPhone = document.getElementById('volunteerPhone').value;
-                const requestId = parseInt(document.getElementById('modalRequestId').value);
+                const requestId = document.getElementById('modalRequestId').value;
 
                 const phoneValidation = validateVolunteerPhone(volunteerPhone);
                 if (!phoneValidation.valid) {
@@ -520,28 +508,28 @@
                     return;
                 }
 
-                const request = requests.find(req => req.id === requestId);
-                if (request) {
-                    request.status = 'helping';
-                    request.volunteers.push(`${volunteerName.trim()} (${phoneValidation.phone})`);
-
-                    volunteers.push({
-                        name: volunteerName.trim(),
-                        phone: phoneValidation.phone,
-                        requestId: requestId,
-                        location: request.location,
-                        timestamp: new Date().toISOString(),
-                        status: 'helping'
-                    });
-
-                    saveData();
-                    displayRequests();
-                    updateStats();
+                // Update request with new volunteer information
+                fetch(`${API_URL}/${requestId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        status: 'helping',
+                        volunteers: `${volunteerName.trim()} (${phoneValidation.phone})`
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
                     showNotification(`✅ Thank you ${volunteerName}! Your help is greatly appreciated.`);
-
                     modal.style.display = 'none';
                     volunteerForm.reset();
-                }
+                    displayRequests();
+                    updateStats();
+                    displayVolunteerActivity();
+                })
+                .catch(error => {
+                    console.error('Error volunteering:', error);
+                    showNotification('❌ Failed to confirm help. Please try again.');
+                });
             });
         }
 
@@ -599,50 +587,69 @@
                 return;
             }
             const imageFile = document.getElementById('personImage').files[0];
+            
+            // Note: Image upload requires more complex backend handling. This version sends a placeholder.
             const newRequest = {
-                id: requestIdCounter++,
                 reporterName: document.getElementById('reporterName').value,
                 reporterPhone: document.getElementById('reporterPhone').value,
                 location: document.getElementById('location').value,
                 description: document.getElementById('description').value,
                 urgency: document.getElementById('urgency').value,
-                status: 'pending',
-                timestamp: new Date().toISOString(),
-                image: imageFile ? URL.createObjectURL(imageFile) : null,
-                volunteers: []
+                image: imageFile ? "Image Not Supported Yet" : null // Placeholder
             };
-            requests.unshift(newRequest);
-            saveData();
-            showNotification('✅ Report submitted successfully! Thank you for caring.');
-            this.reset();
-            document.getElementById('reporterPhone').classList.remove('valid', 'invalid');
-            document.getElementById('reporterPhoneSuccess').style.display = 'none';
-            updateStats();
-            displayRequests();
+
+            fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newRequest)
+            })
+            .then(response => response.json())
+            .then(data => {
+                showNotification('✅ Report submitted successfully! Thank you for caring.');
+                this.reset();
+                document.getElementById('reporterPhone').classList.remove('valid', 'invalid');
+                document.getElementById('reporterPhoneSuccess').style.display = 'none';
+                updateStats();
+                displayRequests();
+            })
+            .catch(error => {
+                console.error('Error submitting report:', error);
+                showNotification('❌ Failed to submit report. Please try again.');
+            });
         });
 
         function displayRequests(filter = 'all') {
             const requestsList = document.getElementById('requestsList');
-            const filteredRequests = filter === 'all' ? requests : requests.filter(req => req.status === filter);
-            if (filteredRequests.length === 0) {
-                requestsList.innerHTML = '<p style="text-align: center; color: #666;">No requests found. You can report a need in the first tab!</p>';
-                return;
-            }
-            requestsList.innerHTML = filteredRequests.map(request => `
-                <div class="request-card">
-                    ${request.image ? `<img src="${request.image}" alt="Person in need" class="request-image">` : ''}
-                    <div class="status-badge status-${request.status}">${request.status}</div>
-                    <h3>Location: ${request.location}</h3>
-                    <p><strong>Description:</strong> ${request.description}</p>
-                    <p><strong>Urgency:</strong> ${request.urgency}</p>
-                    <p><strong>Reported by:</strong> ${request.reporterName}</p>
-                    <p><strong>Contact:</strong> ${request.reporterPhone}</p>
-                    <p><strong>Time:</strong> ${new Date(request.timestamp).toLocaleString()}</p>
-                    ${request.volunteers.length > 0 ? `<p><strong>Volunteers:</strong> ${request.volunteers.join(', ')}</p>` : ''}
-                    ${request.status === 'pending' ? `<button class="help-btn" onclick="volunteerToHelp(${request.id})">I'll Help! 🤝</button>` : ''}
-                    ${request.status === 'helping' ? `<button class="help-btn" onclick="markCompleted(${request.id})">Mark as Completed ✅</button>` : ''}
-                </div>
-            `).join('');
+            requestsList.innerHTML = '<p style="text-align: center; color: #666;">Loading requests...</p>';
+
+            fetch(API_URL)
+                .then(response => response.json())
+                .then(data => {
+                    const filteredRequests = filter === 'all' ? data : data.filter(req => req.status === filter);
+                    if (filteredRequests.length === 0) {
+                        requestsList.innerHTML = '<p style="text-align: center; color: #666;">No requests found. You can report a need in the first tab!</p>';
+                    } else {
+                        requestsList.innerHTML = filteredRequests.map(request => `
+                            <div class="request-card">
+                                ${request.image ? `<img src="${request.image}" alt="Person in need" class="request-image">` : ''}
+                                <div class="status-badge status-${request.status}">${request.status}</div>
+                                <h3>Location: ${request.location}</h3>
+                                <p><strong>Description:</strong> ${request.description}</p>
+                                <p><strong>Urgency:</strong> ${request.urgency}</p>
+                                <p><strong>Reported by:</strong> ${request.reporterName}</p>
+                                <p><strong>Contact:</strong> ${request.reporterPhone}</p>
+                                <p><strong>Time:</strong> ${new Date(request.timestamp).toLocaleString()}</p>
+                                ${request.volunteers.length > 0 ? `<p><strong>Volunteers:</strong> ${request.volunteers.join(', ')}</p>` : ''}
+                                ${request.status === 'pending' ? `<button class="help-btn" onclick="volunteerToHelp('${request._id}')">I'll Help! 🤝</button>` : ''}
+                                ${request.status === 'helping' ? `<button class="help-btn" onclick="markCompleted('${request._id}')">Mark as Completed ✅</button>` : ''}
+                            </div>
+                        `).join('');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching data:', error);
+                    requestsList.innerHTML = '<p style="text-align: center; color: #ef4444;">Failed to load requests. Please try again later.</p>';
+                });
         }
 
         function volunteerToHelp(requestId) {
@@ -652,70 +659,49 @@
         }
 
         function markCompleted(requestId) {
-            const request = requests.find(req => req.id === requestId);
-            if (request) {
-                request.status = 'completed';
-                const volunteer = volunteers.find(vol => vol.requestId === requestId && vol.status === 'helping');
-                if (volunteer) volunteer.status = 'completed';
-                saveData();
+            fetch(`${API_URL}/${requestId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'completed' })
+            })
+            .then(response => response.json())
+            .then(data => {
+                showNotification('Thank you for making a difference! ❤️');
                 displayRequests();
                 updateStats();
-                showNotification('Thank you for making a difference! ❤️');
-            }
+            })
+            .catch(error => {
+                console.error('Error updating status:', error);
+                showNotification('❌ Failed to mark as completed. Please try again.');
+            });
         }
 
         function displayVolunteerActivity() {
             const volunteerList = document.getElementById('volunteerList');
-            if (volunteers.length === 0) {
-                volunteerList.innerHTML = '<p style="text-align: center; color: #666;">No volunteering activity yet.</p>';
-                return;
-            }
-            volunteerList.innerHTML = volunteers.map((vol, index) => `
-                <div class="request-card">
-                    <h3>Volunteer: ${vol.name}</h3>
-                    <p><strong>Phone:</strong> ${vol.phone}</p>
-                    <p><strong>Location:</strong> ${vol.location}</p>
-                    <p><strong>Status:</strong> <span class="status-badge status-${vol.status}">${vol.status}</span></p>
-                    <p><strong>Started:</strong> ${new Date(vol.timestamp).toLocaleString()}</p>
-                    ${vol.completedAt ? `<p><strong>Completed:</strong> ${new Date(vol.completedAt).toLocaleString()}</p>` : ''}
-                    ${vol.status === 'helping' ? `<button class="help-btn" onclick="updateVolunteerStatus(${index}, 'completed')">Mark as Completed ✅</button><button class="help-btn" onclick="updateVolunteerStatus(${index}, 'cancelled')" style="background: #ef4444; margin-left: 10px;">Cancel Help ❌</button>` : ''}
-                    ${vol.status === 'completed' ? `<p style="color: #10b981; font-weight: bold;">✅ Help Successfully Completed!</p>` : ''}
-                    ${vol.status === 'cancelled' ? `<p style="color: #ef4444; font-weight: bold;">❌ Help Cancelled</p><button class="help-btn" onclick="updateVolunteerStatus(${index}, 'helping')">Resume Help 🔄</button>` : ''}
-                </div>
-            `).join('');
-        }
+            volunteerList.innerHTML = '<p style="text-align: center; color: #666;">Loading your activity...</p>';
 
-        function updateVolunteerStatus(volunteerIndex, newStatus) {
-            const volunteer = volunteers[volunteerIndex];
-            const oldStatus = volunteer.status;
-            volunteer.status = newStatus;
-
-            if (newStatus === 'completed') {
-                volunteer.completedAt = new Date().toISOString();
-                showNotification('Thank you for completing your help! You made a difference! 🙏');
-            } else if (newStatus === 'cancelled') {
-                showNotification('Help cancelled. You can resume anytime if needed.');
-            } else if (newStatus === 'helping' && oldStatus === 'cancelled') {
-                showNotification('Help resumed! Thank you for your dedication! 💪');
-            }
-
-            const request = requests.find(req => req.id === volunteer.requestId);
-            if (request) {
-                if (newStatus === 'completed') {
-                    request.status = 'completed';
-                } else if (newStatus === 'cancelled' && request.status === 'helping') {
-                    const otherHelpingVolunteers = volunteers.filter(vol => vol.requestId === volunteer.requestId && vol.status === 'helping' && volunteers.indexOf(vol) !== volunteerIndex);
-                    if (otherHelpingVolunteers.length === 0) {
-                        request.status = 'pending';
+            fetch(API_URL)
+                .then(response => response.json())
+                .then(data => {
+                    // Note: This is a simplified view and assumes volunteering is only done from this browser.
+                    const myVolunteering = data.filter(req => req.volunteers.length > 0 && req.status !== 'pending');
+                    if (myVolunteering.length === 0) {
+                        volunteerList.innerHTML = '<p style="text-align: center; color: #666;">No volunteering activity yet.</p>';
+                    } else {
+                        volunteerList.innerHTML = myVolunteering.map(req => `
+                            <div class="request-card">
+                                <h3>Location: ${req.location}</h3>
+                                <p><strong>Description:</strong> ${req.description}</p>
+                                <p><strong>Status:</strong> <span class="status-badge status-${req.status}">${req.status}</span></p>
+                                <p><strong>Volunteers:</strong> ${req.volunteers.join(', ')}</p>
+                            </div>
+                        `).join('');
                     }
-                } else if (newStatus === 'helping' && oldStatus === 'cancelled') {
-                    request.status = 'helping';
-                }
-            }
-            saveData();
-            displayVolunteerActivity();
-            displayRequests();
-            updateStats();
+                })
+                .catch(error => {
+                    console.error('Error fetching volunteer activity:', error);
+                    volunteerList.innerHTML = '<p style="text-align: center; color: #ef4444;">Failed to load activity. Please try again later.</p>';
+                });
         }
 
         function filterRequests() {
@@ -724,9 +710,16 @@
         }
 
         function updateStats() {
-            document.getElementById('totalRequests').textContent = requests.length;
-            document.getElementById('helpedCount').textContent = requests.filter(req => req.status === 'completed').length;
-            document.getElementById('activeVolunteers').textContent = volunteers.filter(vol => vol.status === 'helping').length;
+            fetch(API_URL)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('totalRequests').textContent = data.length;
+                    document.getElementById('helpedCount').textContent = data.filter(req => req.status === 'completed').length;
+                    document.getElementById('activeVolunteers').textContent = data.filter(req => req.status === 'helping').length;
+                })
+                .catch(error => {
+                    console.error('Error updating stats:', error);
+                });
         }
 
         function showNotification(message) {
@@ -736,12 +729,6 @@
             setTimeout(() => {
                 notification.style.display = 'none';
             }, 5000);
-        }
-
-        function saveData() {
-            localStorage.setItem('foodRequests', JSON.stringify(requests));
-            localStorage.setItem('volunteers', JSON.stringify(volunteers));
-            localStorage.setItem('requestIdCounter', requestIdCounter.toString());
         }
 
         setInterval(() => {
@@ -754,6 +741,5 @@
         }, 30000);
     </script>
 </body>
-
 
 </html>
