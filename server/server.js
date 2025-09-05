@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const fetch = require('node-fetch'); // You need to install this package
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -150,6 +151,24 @@ app.patch('/api/volunteers/:id', async (req, res) => {
         res.json(updatedVolunteer);
     } catch (err) {
         res.status(400).json({ message: err.message });
+    }
+});
+
+// New API endpoint for reverse geocoding
+app.post('/api/geocode', async (req, res) => {
+    const { lat, lon } = req.body;
+    const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+
+    if (!GOOGLE_MAPS_API_KEY) {
+        return res.status(500).json({ message: 'Google Maps API key not configured on the server.' });
+    }
+
+    try {
+        const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${GOOGLE_MAPS_API_KEY}`);
+        const data = await response.json();
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to fetch geocoding data.', error: err.message });
     }
 });
 
