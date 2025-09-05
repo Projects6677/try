@@ -372,6 +372,7 @@
                     <label for="location">Location/Address:</label>
                     <textarea id="location" rows="3" placeholder="Please provide detailed address or nearby landmarks"
                         required></textarea>
+                        <button type="button" onclick="getLiveLocation()">Use Live Location 📍</button>
                 </div>
 
                 <div class="form-group">
@@ -448,6 +449,8 @@
         const API_URL = 'https://try-ji7x.onrender.com/api/requests';
         const VOLUNTEER_API_URL = 'https://try-ji7x.onrender.com/api/volunteers';
 
+        let liveLocation = {};
+
         // Initialize the app on page load
         document.addEventListener('DOMContentLoaded', function () {
             updateStats();
@@ -456,6 +459,25 @@
             setupPhoneValidation();
             setupModal();
         });
+
+        function getLiveLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        liveLocation.latitude = position.coords.latitude;
+                        liveLocation.longitude = position.coords.longitude;
+                        showNotification('📍 Live location captured successfully!');
+                        document.getElementById('location').value = `Live Location: Lat ${liveLocation.latitude}, Lng ${liveLocation.longitude}`;
+                    },
+                    (error) => {
+                        showNotification('❌ Failed to get live location. Please enter location manually.');
+                        console.error('Geolocation Error:', error);
+                    }
+                );
+            } else {
+                showNotification('❌ Geolocation is not supported by your browser. Please enter location manually.');
+            }
+        }
 
         // Phone number validation setup
         function setupPhoneValidation() {
@@ -599,7 +621,9 @@
                 location: document.getElementById('location').value,
                 description: document.getElementById('description').value,
                 urgency: document.getElementById('urgency').value,
-                image: imageFile ? "Image Not Supported Yet" : null
+                image: imageFile ? "Image Not Supported Yet" : null,
+                latitude: liveLocation.latitude,
+                longitude: liveLocation.longitude
             };
 
             fetch(API_URL, {
@@ -611,6 +635,7 @@
             .then(data => {
                 showNotification('✅ Report submitted successfully! Thank you for caring.');
                 this.reset();
+                liveLocation = {}; // Clear live location after submit
                 document.getElementById('reporterPhone').classList.remove('valid', 'invalid');
                 document.getElementById('reporterPhoneSuccess').style.display = 'none';
                 updateStats();
@@ -637,7 +662,8 @@
                             <div class="request-card">
                                 ${request.image ? `<img src="${request.image}" alt="Person in need" class="request-image">` : ''}
                                 <div class="status-badge status-${request.status}">${request.status}</div>
-                                <h3>Location: ${request.location}</h3>
+                                <h3>Location: ${request.location || 'Not Specified'}</h3>
+                                ${request.latitude && request.longitude ? `<p><strong>Live Location:</strong> <a href="https://www.google.com/maps/search/?api=1&query=${request.latitude},${request.longitude}" target="_blank">View on Map 🗺️</a></p>` : ''}
                                 <p><strong>Description:</strong> ${request.description}</p>
                                 <p><strong>Urgency:</strong> ${request.urgency}</p>
                                 <p><strong>Reported by:</strong> ${request.reporterName}</p>
