@@ -9,6 +9,11 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(cors());
 
+// New route to handle the root URL and avoid "Cannot GET /" error
+app.get('/', (req, res) => {
+    res.send('Welcome to the FeedHope API! The API endpoints are available at /api/requests');
+});
+
 mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
     .then(() => console.log('MongoDB connected'))
     .catch(err => console.error(err));
@@ -55,7 +60,7 @@ app.post('/api/requests', async (req, res) => {
     }
 });
 
-// New endpoint for updating a request
+// Endpoint for updating a request
 app.patch('/api/requests/:id', async (req, res) => {
     try {
         const request = await Request.findById(req.params.id);
@@ -66,6 +71,7 @@ app.patch('/api/requests/:id', async (req, res) => {
             request.status = req.body.status;
         }
         if (req.body.volunteers != null) {
+            // This is a simple fix to push a new volunteer, but a more robust solution would check for duplicates.
             request.volunteers.push(req.body.volunteers);
         }
         const updatedRequest = await request.save();
